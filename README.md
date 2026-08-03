@@ -25,7 +25,8 @@ bp-sugar-tracker/
 ├── sw.js                 서비스 워커 (오프라인 캐시)
 ├── css/style.css         디자인 시스템 + 전체 스타일
 ├── js/
-│   ├── storage.js        localStorage 기반 데이터 저장 계층
+│   ├── firebase-config.js Firebase 프로젝트 설정 및 초기화
+│   ├── storage.js        Firebase Realtime Database 기반 데이터 저장 계층
 │   ├── converter.js       단위 변환 (mg/dL↔mmol/L, mmHg↔kPa)
 │   ├── insights.js        범위 판정 + 맞춤 인사이트 로직
 │   ├── charts.js          캔버스 기반 추세 차트 (외부 라이브러리 없음)
@@ -35,9 +36,35 @@ bp-sugar-tracker/
 └── icons/                 앱 아이콘 (일반 + 마스커블)
 ```
 
-## 데이터 저장
+## 데이터 저장 (Firebase Realtime Database)
 
-현재는 기기의 `localStorage`에만 저장됩니다 (서버로 전송되지 않음). 여러 기기 간 동기화나 백업이 필요하시면 `js/storage.js`의 `getAll/add/update/remove` 함수만 Firebase Realtime Database 호출로 교체하면 되며, 나머지 코드(`app.js` 등)는 이 인터페이스만 바라보도록 설계했습니다.
+v1.1.0부터 기록은 Firebase Realtime Database에 저장되어, 로그인한 모든 기기에서 실시간으로 동기화됩니다.
+
+- 프로젝트: `bp-sugar-tracker-19169`
+- 경로: `readings/bp/{id}`, `readings/glucose/{id}`
+- 설정 파일: `js/firebase-config.js`
+
+### 최초 1회, Realtime Database 규칙 설정이 필요합니다
+Firebase 콘솔 → Realtime Database → 규칙에서 다음을 붙여넣고 게시하세요. (규칙이 비어 있으면 기본값이 "모두 거부"라 앱에서 아무것도 안 보입니다.)
+
+```json
+{
+  "rules": {
+    "readings": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
+```
+
+개인용으로 혼자 쓰실 거면 이 정도로 충분합니다. 나중에 URL을 다른 사람과 공유하게 되면 Firebase Authentication을 붙이고 규칙을 `auth != null`로 좁히는 걸 권장드립니다. (`apiKey`는 비밀값이 아니라 공개돼도 되는 프로젝트 식별자이니 신경 쓰지 않으셔도 됩니다 — 실제 보안은 항상 이 규칙이 담당합니다.)
+
+### 오프라인 동작
+서비스 워커가 앱 UI(HTML/CSS/JS)는 캐시해서 오프라인에서도 화면은 열립니다. 다만 실시간 데이터베이스 자체는 캐시 대상이 아니라서, 실제로 기록을 읽고 쓰려면 인터넷 연결이 필요합니다. 연결이 끊긴 상태에서 저장을 시도하면 "Firebase에 연결되지 않아 저장할 수 없습니다" 토스트가 뜨고 데이터는 유실되지 않습니다 (그냥 저장이 안 될 뿐입니다).
+
+### 여러 기기 동기화
+한 기기에서 기록을 추가/수정/삭제하면 다른 기기에서 열어둔 화면도 자동으로 갱신됩니다 (Firebase의 실시간 리스너 덕분에 새로고침이 필요 없습니다).
 
 ## 참고 범위에 대한 안내
 

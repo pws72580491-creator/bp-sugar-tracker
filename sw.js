@@ -3,12 +3,13 @@
    Bump CACHE_NAME on release so old assets are cleared.
    ========================================================= */
 
-const CACHE_NAME = 'bpst-cache-v1.0.0';
+const CACHE_NAME = 'bpst-cache-v1.1.0';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './css/style.css',
+  './js/firebase-config.js',
   './js/storage.js',
   './js/converter.js',
   './js/insights.js',
@@ -17,14 +18,21 @@ const CORE_ASSETS = [
   './js/articles.js',
   './js/app.js',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  'https://www.gstatic.com/firebasejs/10.11.0/firebase-app-compat.js',
+  'https://www.gstatic.com/firebasejs/10.11.0/firebase-database-compat.js'
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(CORE_ASSETS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(cache =>
+      // Cache each asset independently so one failure (e.g. the CDN being
+      // briefly unreachable) doesn't block the whole app shell from being
+      // precached.
+      Promise.all(CORE_ASSETS.map(url =>
+        cache.add(url).catch(err => console.warn('Precache failed:', url, err))
+      ))
+    ).then(() => self.skipWaiting())
   );
 });
 
@@ -58,7 +66,7 @@ self.addEventListener('fetch', event => {
     caches.match(req).then(cached => {
       if (cached) return cached;
       return fetch(req).then(res => {
-        if (res && res.status === 200 && res.type === 'basic') {
+        if (res && res.status === 200 && (res.type === 'basic' || res.type === 'cors')) {
           const copy = res.clone();
           caches.open(CACHE_NAME).then(c => c.put(req, copy));
         }

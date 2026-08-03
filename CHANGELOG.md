@@ -1,5 +1,34 @@
 # 변경 이력 (Changelog)
 
+## v1.1.0 — 2026-08-04
+저장소를 `localStorage`에서 **Firebase Realtime Database**로 전환.
+
+### 변경 사항
+- `js/firebase-config.js` 추가 — 프로젝트 설정(`bp-sugar-tracker-19169`) 및 초기화
+- `js/storage.js`를 Firebase RTDB 기반으로 재작성. 외부에 노출하는 함수 이름/형태(`getAll/add/update/remove/...`)는 그대로 유지해 `app.js` 쪽 변경을 최소화함
+- 데이터 경로: `readings/bp/{pushId}`, `readings/glucose/{pushId}` (레코드의 `id`는 Firebase push 키)
+- 실시간 리스너(`on('value', ...)`)로 로컬 캐시를 유지하다가, 값이 바뀌면(내 기기든 다른 기기든) `window`에 `bpst:data-changed` 이벤트를 쏴서 현재 화면을 다시 그림 → **여러 기기에서 동시에 봐도 자동으로 동기화됨**
+- 기록 저장/삭제가 비동기(Firebase 응답 대기)로 바뀌어, 저장 중에는 버튼이 "저장 중…"으로 바뀌고 중복 제출을 막음
+- Firebase 연결이 안 될 때(오프라인, 네트워크 차단 등) 앱이 죽지 않고 "Firebase에 연결할 수 없습니다" 안내와 함께 읽기 전용처럼 동작하도록 예외 처리 추가
+- 단위 설정(mg/dL 기본값 등)은 기기별 UI 취향이라 그대로 `localStorage`에 남겨둠 (헬스 데이터가 아니므로 동기화 불필요)
+- 서비스 워커(`sw.js`) 캐시 버전 `v1.1.0`으로 상향, Firebase SDK CDN 스크립트도 프리캐시 목록에 추가 (단, Realtime Database 자체의 실시간 통신은 캐시 대상이 아니라서 실제 데이터 읽기/쓰기는 여전히 네트워크 연결이 필요함 — 앱 껍데기(UI)만 오프라인에서 열림)
+
+### 필요한 추가 설정 (Firebase 콘솔)
+Realtime Database 규칙이 열려있지 않으면 읽기/쓰기가 모두 막힙니다. 콘솔의 **Realtime Database → 규칙**에서 아래처럼 설정하세요 (개인용 앱이라 인증 없이 여는 예시입니다):
+
+```json
+{
+  "rules": {
+    "readings": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
+```
+
+> 참고: `apiKey`는 비밀값이 아니라 프로젝트를 식별하는 값이라 클라이언트 코드에 그대로 들어가도 괜찮습니다 (Firebase 공식 문서 기준). 실제 접근 제어는 위의 Database 규칙이 담당합니다. 이 URL을 다른 사람과 공유할 계획이 있다면, 나중에 Firebase Authentication(익명 로그인 등)을 붙이고 규칙을 `auth != null` 조건으로 좁히는 걸 권장합니다.
+
 ## v1.0.0 — 2026-08-03
 최초 릴리스.
 
