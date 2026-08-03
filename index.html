@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>혈압·혈당 트래커 Pro</title>
+<meta name="description" content="혈압과 혈당 수치를 기록하고 추세를 분석하는 개인 건강 관리 PWA">
+<meta name="theme-color" content="#F5F6F4">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <header class="app-header" id="appHeader">
+    <div class="eyebrow">BP &amp; SUGAR TRACKER PRO</div>
+    <h1 id="headerTitle">대시보드</h1>
+  </header>
+
+  <main>
+
+    <!-- ============ DASHBOARD ============ -->
+    <section class="view" id="view-dashboard">
+      <div class="hero">
+        <svg class="hero-pulse" viewBox="0 0 300 64" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M0,32 L70,32 L86,10 L104,52 L120,20 L136,32 L300,32"/>
+        </svg>
+        <div class="hero-top">
+          <h2 style="font-size:15px;">오늘의 요약</h2>
+          <span class="today" id="todayLabel"></span>
+        </div>
+        <div class="stat-row">
+          <div class="stat-card bp">
+            <div class="label">최근 혈압</div>
+            <div class="value" id="latestBp">—</div>
+            <div id="latestBpBadgeWrap"></div>
+          </div>
+          <div class="stat-card glucose">
+            <div class="label">최근 혈당</div>
+            <div class="value" id="latestGlucose">—</div>
+            <div id="latestGlucoseBadgeWrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title"><h2>맞춤 인사이트</h2></div>
+      <div id="insightList"></div>
+
+      <div class="section-title">
+        <h2>최근 기록</h2>
+        <button class="link" data-nav="history">전체 보기</button>
+      </div>
+      <div id="recentList"></div>
+    </section>
+
+    <!-- ============ HISTORY ============ -->
+    <section class="view" id="view-history" hidden>
+      <div class="chip-row" id="historyFilterChips">
+        <button class="chip active" data-filter="all">전체</button>
+        <button class="chip" data-filter="bp">혈압</button>
+        <button class="chip" data-filter="glucose">혈당</button>
+      </div>
+      <svg class="pulse-rule" viewBox="0 0 400 28" preserveAspectRatio="none" aria-hidden="true"><path d="M0,14 L150,14 L164,4 L178,24 L192,8 L206,14 L400,14"/></svg>
+      <div id="historyList"></div>
+    </section>
+
+    <!-- ============ ANALYSIS ============ -->
+    <section class="view" id="view-analysis" hidden>
+      <div class="chip-row" id="analysisRangeChips">
+        <button class="chip" data-range="7">7일</button>
+        <button class="chip active" data-range="30">30일</button>
+        <button class="chip" data-range="90">90일</button>
+        <button class="chip" data-range="0">전체</button>
+      </div>
+
+      <div class="card chart-card" style="margin-top:14px;">
+        <div class="section-title mt-0" style="margin:0 0 8px;"><h2>혈압 추세</h2></div>
+        <canvas id="bpChart"></canvas>
+        <div class="chart-legend">
+          <div class="item"><span class="dot" style="background:var(--blood)"></span>수축기</div>
+          <div class="item"><span class="dot" style="background:var(--blood-soft)"></span>이완기</div>
+        </div>
+        <div class="stat-mini-row" id="bpStatsRow"></div>
+      </div>
+
+      <div class="card chart-card">
+        <div class="section-title mt-0" style="margin:0 0 8px;"><h2>혈당 추세</h2></div>
+        <canvas id="glucoseChart"></canvas>
+        <div class="chart-legend">
+          <div class="item"><span class="dot" style="background:var(--glucose)"></span>혈당 (mg/dL 환산)</div>
+        </div>
+        <div class="stat-mini-row" id="glucoseStatsRow"></div>
+      </div>
+
+      <div class="section-title"><h2>보고서</h2></div>
+      <div class="card">
+        <p class="text-soft" style="font-size:13px;line-height:1.6;">선택한 기간의 기록을 인쇄 가능한 보고서로 정리합니다. 진료 시 의료진과 공유해 보세요.</p>
+        <div style="margin-top:12px;">
+          <button class="btn primary" id="printReportBtn">보고서 인쇄 / PDF로 저장</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CONVERTER ============ -->
+    <section class="view" id="view-converter" hidden>
+      <div class="section-title mt-0"><h2>혈당 단위 변환</h2></div>
+      <div class="card">
+        <div class="field">
+          <label for="convGlucoseInput">mg/dL</label>
+          <input type="number" id="convGlucoseInput" inputmode="decimal" placeholder="예: 100">
+        </div>
+        <div class="result-display" id="convGlucoseResult">—</div>
+        <div class="result-sub">mmol/L</div>
+      </div>
+
+      <div class="section-title"><h2>혈압 단위 변환</h2></div>
+      <div class="card">
+        <div class="field">
+          <label for="convBpInput">mmHg</label>
+          <input type="number" id="convBpInput" inputmode="decimal" placeholder="예: 120">
+        </div>
+        <div class="result-display" id="convBpResult">—</div>
+        <div class="result-sub">kPa</div>
+      </div>
+
+      <div class="insight info" style="margin-top:4px;">
+        <div class="ico">ℹ️</div>
+        <div class="txt">한국을 포함한 대부분의 병원에서는 mg/dL과 mmHg를 기본 단위로 사용합니다. mmol/L·kPa 표기가 익숙한 경우 참고용으로 활용하세요.</div>
+      </div>
+    </section>
+
+    <!-- ============ ARTICLES ============ -->
+    <section class="view" id="view-articles" hidden>
+      <div class="section-title mt-0"><h2>건강 정보</h2></div>
+      <div id="articleList"></div>
+    </section>
+
+  </main>
+
+  <button class="fab" id="fabAdd" aria-label="새 기록 추가">+</button>
+
+  <nav class="tabbar">
+    <button data-tab="dashboard" class="active">
+      <svg class="ic" width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8h3l1.5-4.5 2 9 1.5-4.5H15"/></svg>
+      홈
+    </button>
+    <button data-tab="history">
+      <svg class="ic" width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+      기록
+    </button>
+    <button data-tab="analysis">
+      <svg class="ic" width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 13V9M6 13V5M10 13V7M14 13V3"/></svg>
+      분석
+    </button>
+    <button data-tab="converter">
+      <svg class="ic" width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5h9M9.5 3l2.5 2.5-2.5 2.5M13 10.5H4M6.5 8L4 10.5 6.5 13"/></svg>
+      변환기
+    </button>
+    <button data-tab="articles">
+      <svg class="ic" width="19" height="19" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5c2-1 4-1 6 0c2-1 4-1 6 0v9c-2-1-4-1-6 0c-2-1-4-1-6 0z"/></svg>
+      정보
+    </button>
+  </nav>
+
+  <!-- ============ ADD / EDIT READING SHEET ============ -->
+  <div class="sheet-backdrop" id="addSheetBackdrop" hidden>
+    <div class="sheet" id="addSheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <h2 id="sheetTitle">기록 추가</h2>
+        <button class="icon-btn" id="closeSheetBtn">✕</button>
+      </div>
+
+      <div class="segmented" id="typeSegment">
+        <button type="button" class="active" data-type="bp">혈압</button>
+        <button type="button" data-type="glucose">혈당</button>
+      </div>
+
+      <form id="readingForm" style="margin-top:16px;">
+        <!-- BP fields -->
+        <div id="bpFields">
+          <div class="row-2">
+            <div class="field">
+              <label for="fSystolic">수축기 (mmHg)</label>
+              <input type="number" id="fSystolic" inputmode="numeric" placeholder="120">
+            </div>
+            <div class="field">
+              <label for="fDiastolic">이완기 (mmHg)</label>
+              <input type="number" id="fDiastolic" inputmode="numeric" placeholder="80">
+            </div>
+          </div>
+          <div class="field">
+            <label for="fPulse">맥박 (선택, bpm)</label>
+            <input type="number" id="fPulse" inputmode="numeric" placeholder="72">
+          </div>
+        </div>
+
+        <!-- Glucose fields -->
+        <div id="glucoseFields" hidden>
+          <div class="row-2">
+            <div class="field">
+              <label for="fGlucoseValue">혈당 수치</label>
+              <input type="number" id="fGlucoseValue" inputmode="decimal" placeholder="95">
+            </div>
+            <div class="field">
+              <label for="fGlucoseUnit">단위</label>
+              <select id="fGlucoseUnit">
+                <option value="mgdl">mg/dL</option>
+                <option value="mmol">mmol/L</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="fGlucoseContext">측정 시점</label>
+            <select id="fGlucoseContext">
+              <option value="fasting">공복</option>
+              <option value="before_meal">식전</option>
+              <option value="after_meal">식후</option>
+              <option value="bedtime">취침 전</option>
+              <option value="random">무작위</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row-2">
+          <div class="field">
+            <label for="fDate">날짜</label>
+            <input type="date" id="fDate">
+          </div>
+          <div class="field">
+            <label for="fTime">시간</label>
+            <input type="time" id="fTime">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="fNotes">메모 (선택)</label>
+          <textarea id="fNotes" placeholder="예: 아침 약 복용 후"></textarea>
+        </div>
+
+        <button type="submit" class="btn primary">저장</button>
+        <div id="deleteBtnWrap" style="margin-top:8px;" hidden>
+          <button type="button" class="btn danger-ghost" id="deleteReadingBtn">이 기록 삭제</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ ARTICLE DETAIL SHEET ============ -->
+  <div class="sheet-backdrop" id="articleSheetBackdrop" hidden>
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <h2 id="articleSheetTitle" style="font-size:16px;"></h2>
+        <button class="icon-btn" id="closeArticleSheetBtn">✕</button>
+      </div>
+      <div class="article-body" id="articleSheetBody"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div id="print-area"></div>
+
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/converter.js"></script>
+<script src="js/insights.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/articles.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
