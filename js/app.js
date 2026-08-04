@@ -3,6 +3,8 @@
    ========================================================= */
 
 (function () {
+  const APP_VERSION = '1.1.1';
+
   const state = {
     tab: 'dashboard',
     historyFilter: 'all',
@@ -45,6 +47,9 @@
     window.addEventListener('scroll', () => {
       els.header.classList.toggle('is-scrolled', window.scrollY > 4);
     });
+    // Firebase pushes this whenever readings change — locally, from another
+    // device, or when the initial data finishes loading.
+    window.addEventListener('bpst:data-changed', () => renderTab(state.tab));
   }
 
   function cacheEls() {
@@ -135,9 +140,9 @@
 
     // recent list (merge, top 5)
     const merged = mergeReadings(bp, glucose).slice(0, 5);
-    $('#recentList').innerHTML = merged.length
+    $('#recentList').innerHTML = loadingOrErrorHtml() || (merged.length
       ? merged.map(readingRowHtml).join('')
-      : emptyStateHtml('아직 기록이 없습니다', '오른쪽 아래 + 버튼으로 첫 기록을 추가해 보세요.');
+      : emptyStateHtml('아직 기록이 없습니다', '오른쪽 아래 + 버튼으로 첫 기록을 추가해 보세요.'));
 
     bindReadingRowClicks('#recentList');
   }
@@ -167,9 +172,9 @@
     else if (state.historyFilter === 'glucose') merged = mergeReadings([], glucose);
     else merged = mergeReadings(bp, glucose);
 
-    $('#historyList').innerHTML = merged.length
+    $('#historyList').innerHTML = loadingOrErrorHtml() || (merged.length
       ? merged.map(readingRowHtml).join('')
-      : emptyStateHtml('기록이 없습니다', '필터를 바꾸거나 새 기록을 추가해 보세요.');
+      : emptyStateHtml('기록이 없습니다', '필터를 바꾸거나 새 기록을 추가해 보세요.'));
 
     bindReadingRowClicks('#historyList');
   }
@@ -213,6 +218,16 @@
 
   function emptyStateHtml(title, sub) {
     return `<div class="empty-state"><div class="glyph">〜</div><p><strong>${title}</strong><br>${sub}</p></div>`;
+  }
+
+  function loadingOrErrorHtml() {
+    if (!Storage.isReady()) {
+      return `<div class="empty-state"><div class="glyph">…</div><p>불러오는 중…</p></div>`;
+    }
+    if (!Storage.isAvailable()) {
+      return `<div class="empty-state"><div class="glyph">⚠️</div><p><strong>Firebase에 연결할 수 없습니다</strong><br>네트워크 연결을 확인한 뒤 새로고침해 주세요.</p></div>`;
+    }
+    return null;
   }
 
   function bindReadingRowClicks(containerSel) {
@@ -304,6 +319,7 @@
     $$('#articleList .article-card').forEach(card => {
       card.addEventListener('click', () => openArticleSheet(card.dataset.id));
     });
+    $('#versionFooter').textContent = `혈압·혈당 트래커 Pro · v${APP_VERSION}`;
   }
 
   function bindArticleSheet() {
@@ -386,8 +402,10 @@
   }
 
   function bindForm() {
-    $('#readingForm').addEventListener('submit', e => {
+    $('#readingForm').addEventListener('submit', async e => {
       e.preventDefault();
+      if (!Storage.isAvailable()) { showToast('Firebase에 연결되지 않아 저장할 수 없습니다'); return; }
+
       const type = $$('#typeSegment button.active')[0].dataset.type;
       const dateVal = $('#fDate').value;
       const timeVal = $('#fTime').value || '00:00';
@@ -395,36 +413,51 @@
       const iso = new Date(`${dateVal}T${timeVal}`).toISOString();
       const notes = $('#fNotes').value.trim();
 
+      let payload;
       if (type === 'bp') {
         const systolic = parseInt($('#fSystolic').value, 10);
         const diastolic = parseInt($('#fDiastolic').value, 10);
         const pulse = $('#fPulse').value ? parseInt($('#fPulse').value, 10) : null;
         if (!systolic || !diastolic) { showToast('수축기·이완기 수치를 입력해 주세요'); return; }
-        const payload = { systolic, diastolic, pulse, date: iso, notes };
-        if (state.editing) Storage.update('bp', state.editing.id, payload);
-        else Storage.add('bp', payload);
+        payload = { systolic, diastolic, pulse, date: iso, notes };
       } else {
         const value = parseFloat($('#fGlucoseValue').value);
         const unit = $('#fGlucoseUnit').value;
         const context = $('#fGlucoseContext').value;
         if (!value) { showToast('혈당 수치를 입력해 주세요'); return; }
-        const payload = { value, unit, context, date: iso, notes };
-        if (state.editing) Storage.update('glucose', state.editing.id, payload);
-        else Storage.add('glucose', payload);
+        payload = { value, unit, context, date: iso, notes };
       }
 
-      closeSheet();
-      showToast('저장되었습니다');
-      renderTab(state.tab);
+      const submitBtn = $('#readingForm button[type="submit"]');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '저장 중…';
+      try {
+        if (state.editing) await Storage.update(type, state.editing.id, payload);
+        else await Storage.add(type, payload);
+        closeSheet();
+        showToast('저장되었습니다');
+        renderTab(state.tab);
+      } catch (err) {
+        console.error('저장 실패', err);
+        showToast('저장에 실패했습니다. 네트워크를 확인해 주세요');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '저장';
+      }
     });
 
-    $('#deleteReadingBtn').addEventListener('click', () => {
+    $('#deleteReadingBtn').addEventListener('click', async () => {
       if (!state.editing) return;
       if (!confirm('이 기록을 삭제할까요?')) return;
-      Storage.remove(state.editing.type, state.editing.id);
-      closeSheet();
-      showToast('삭제되었습니다');
-      renderTab(state.tab);
+      try {
+        await Storage.remove(state.editing.type, state.editing.id);
+        closeSheet();
+        showToast('삭제되었습니다');
+        renderTab(state.tab);
+      } catch (err) {
+        console.error('삭제 실패', err);
+        showToast('삭제에 실패했습니다. 네트워크를 확인해 주세요');
+      }
     });
   }
 

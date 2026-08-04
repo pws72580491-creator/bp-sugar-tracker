@@ -1,82 +1,98 @@
 /* =========================================================
-   storage.js — persistence layer
-   Wraps localStorage behind a small async-friendly API so the
-   backing store can later be swapped for a remote database
-   (e.g. Firebase Realtime Database) without touching app.js.
+   storage.js — persistence layer (Firebase Realtime Database)
+   Keeps the same public API the app was already built against
+   (getAll/add/update/remove/clearAll/exportJson/getSettings/
+   setSettings) so app.js barely has to change. Reads are served
+   from an in-memory cache kept in sync via Firebase's realtime
+   `on('value', ...)` listeners; writes go straight to Firebase.
+   Whenever the cache changes (locally or from another device),
+   a 'bpst:data-changed' event fires on window so the UI re-renders.
+
+   Note: readings are shared across every device pointed at this
+   Firebase project (there's no per-user auth in this app yet).
+   Personal preferences (unit display) stay in localStorage since
+   those are per-device, not health data.
    ========================================================= */
 
 const Storage = (() => {
-  const DB_KEY = 'bpst_data_v1';
+  const READING_TYPES = ['bp', 'glucose'];
+  const cache = { bp: {}, glucose: {} };
+  const loaded = { bp: false, glucose: false };
+  const failed = { bp: false, glucose: false };
 
-  function readDb() {
-    try {
-      const raw = localStorage.getItem(DB_KEY);
-      if (!raw) return { bp: [], glucose: [] };
-      const parsed = JSON.parse(raw);
-      return {
-        bp: Array.isArray(parsed.bp) ? parsed.bp : [],
-        glucose: Array.isArray(parsed.glucose) ? parsed.glucose : []
-      };
-    } catch (e) {
-      console.error('Storage read failed', e);
-      return { bp: [], glucose: [] };
-    }
+  const db = window.FirebaseDB || null;
+  const available = !!db;
+
+  function notifyChange() {
+    window.dispatchEvent(new CustomEvent('bpst:data-changed'));
   }
 
-  function writeDb(db) {
-    try {
-      localStorage.setItem(DB_KEY, JSON.stringify(db));
-      return true;
-    } catch (e) {
-      console.error('Storage write failed', e);
-      return false;
-    }
+  function attachListener(type) {
+    db.ref('readings/' + type).on('value',
+      snapshot => {
+        cache[type] = snapshot.val() || {};
+        loaded[type] = true;
+        failed[type] = false;
+        notifyChange();
+      },
+      error => {
+        console.error('Firebase read failed for ' + type, error);
+        loaded[type] = true;
+        failed[type] = true;
+        notifyChange();
+      }
+    );
   }
 
-  function uid() {
-    return 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  if (available) {
+    READING_TYPES.forEach(attachListener);
+  } else {
+    console.error('Storage: Firebase가 연결되지 않아 읽기/쓰기를 사용할 수 없습니다.');
+    READING_TYPES.forEach(t => { loaded[t] = true; failed[t] = true; });
+  }
+
+  function isReady() {
+    return loaded.bp && loaded.glucose;
+  }
+  function isAvailable() {
+    return available && !failed.bp && !failed.glucose;
   }
 
   function getAll(type) {
-    const db = readDb();
-    return (db[type] || []).slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+    const obj = cache[type] || {};
+    return Object.keys(obj)
+      .map(id => Object.assign({ id }, obj[id]))
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
   }
 
   function add(type, entry) {
-    const db = readDb();
-    const record = Object.assign({ id: uid(), createdAt: new Date().toISOString() }, entry);
-    db[type] = db[type] || [];
-    db[type].push(record);
-    writeDb(db);
-    return record;
+    if (!available) return Promise.reject(new Error('Firebase not available'));
+    const ref = db.ref('readings/' + type).push();
+    const record = Object.assign({ createdAt: new Date().toISOString() }, entry);
+    return ref.set(record).then(() => Object.assign({ id: ref.key }, record));
   }
 
   function update(type, id, updates) {
-    const db = readDb();
-    const list = db[type] || [];
-    const idx = list.findIndex(r => r.id === id);
-    if (idx === -1) return null;
-    list[idx] = Object.assign({}, list[idx], updates, { updatedAt: new Date().toISOString() });
-    writeDb(db);
-    return list[idx];
+    if (!available) return Promise.reject(new Error('Firebase not available'));
+    const record = Object.assign({}, updates, { updatedAt: new Date().toISOString() });
+    return db.ref('readings/' + type + '/' + id).update(record).then(() => true);
   }
 
   function remove(type, id) {
-    const db = readDb();
-    db[type] = (db[type] || []).filter(r => r.id !== id);
-    writeDb(db);
-    return true;
+    if (!available) return Promise.reject(new Error('Firebase not available'));
+    return db.ref('readings/' + type + '/' + id).remove().then(() => true);
   }
 
   function clearAll() {
-    writeDb({ bp: [], glucose: [] });
+    if (!available) return Promise.reject(new Error('Firebase not available'));
+    return Promise.all(READING_TYPES.map(t => db.ref('readings/' + t).remove()));
   }
 
   function exportJson() {
-    return JSON.stringify(readDb(), null, 2);
+    return JSON.stringify({ bp: getAll('bp'), glucose: getAll('glucose') }, null, 2);
   }
 
-  // ---- settings (units, reminders, etc.) ----
+  // ---- settings (units, reminders, etc.) — stays device-local ----
   const SETTINGS_KEY = 'bpst_settings_v1';
   const DEFAULT_SETTINGS = { glucoseUnit: 'mgdl', bpUnit: 'mmHg' };
 
@@ -96,5 +112,8 @@ const Storage = (() => {
     return next;
   }
 
-  return { getAll, add, update, remove, clearAll, exportJson, getSettings, setSettings };
+  return {
+    getAll, add, update, remove, clearAll, exportJson,
+    getSettings, setSettings, isReady, isAvailable
+  };
 })();
