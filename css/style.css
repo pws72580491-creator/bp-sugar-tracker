@@ -280,6 +280,12 @@ textarea{ resize:vertical; min-height:64px; }
 .article-body p{ margin-bottom:14px; }
 .article-body h4{ font-family:var(--f-body); font-size:14px; font-weight:700; margin:18px 0 8px; }
 
+/* ---------- Version footer ---------- */
+.version-footer{
+  text-align:center; margin-top:28px; padding-bottom:8px;
+  font-family:var(--f-mono); font-size:11px; color:var(--ink-soft); opacity:.7;
+}
+
 /* ---------- Insight callout ---------- */
 .insight{
   border-radius:var(--radius); padding:14px 16px; display:flex; gap:12px;
