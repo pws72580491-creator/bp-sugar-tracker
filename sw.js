@@ -3,7 +3,7 @@
    Bump CACHE_NAME on release so old assets are cleared.
    ========================================================= */
 
-const CACHE_NAME = 'bpst-cache-v1.1.0';
+const CACHE_NAME = 'bpst-cache-v1.1.1';
 const CORE_ASSETS = [
   './',
   './index.html',

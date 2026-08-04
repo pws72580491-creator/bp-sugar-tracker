@@ -1,5 +1,8 @@
 # 변경 이력 (Changelog)
 
+## v1.1.1 — 2026-08-04
+- "정보" 탭 하단에 앱 버전 표시 추가 (`혈압·혈당 트래커 Pro · v1.1.1`). 버전 문자열은 `js/app.js` 상단의 `APP_VERSION` 상수 하나로 관리 — 다음 릴리스 때 이 값과 `sw.js`의 `CACHE_NAME`만 같이 올리면 됩니다.
+
 ## v1.1.0 — 2026-08-04
 저장소를 `localStorage`에서 **Firebase Realtime Database**로 전환.
 
